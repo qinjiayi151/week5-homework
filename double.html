@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>双摆 · 混沌动力学模拟</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #1a1a24;
+      color: #eef0fa;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      background:
+        radial-gradient(ellipse at 50% 36%, rgba(48, 54, 82, 0.25), transparent 58%),
+        #1a1a24;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    .panel {
+      position: fixed;
+      top: 22px;
+      left: 24px;
+      width: min(290px, calc(100vw - 32px));
+      padding: 16px 18px;
+      border: 1px solid rgba(172, 185, 230, 0.15);
+      border-radius: 13px;
+      background: rgba(22, 23, 34, 0.78);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(9px);
+    }
+
+    h1 {
+      margin: 0 0 7px;
+      color: #f4f5fc;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .subtitle {
+      margin: 0 0 13px;
+      color: #929bb5;
+      font-size: 12px;
+    }
+
+    .readout {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 7px 18px;
+      margin: 0;
+      color: #aab2c9;
+      font-size: 12px;
+    }
+
+    .readout output {
+      color: #e0e6ff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .actions {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      padding: 11px 14px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(172, 185, 230, 0.15);
+      border-radius: 12px;
+      background: rgba(22, 23, 34, 0.78);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(9px);
+    }
+
+    button {
+      flex: none;
+      padding: 8px 14px;
+      border: 1px solid rgba(145, 170, 255, 0.4);
+      border-radius: 8px;
+      background: rgba(105, 132, 220, 0.17);
+      color: #e3e9ff;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: rgba(105, 132, 220, 0.3);
+    }
+
+    button:focus-visible,
+    a:focus-visible {
+      outline: 2px solid #a9bbff;
+      outline-offset: 3px;
+    }
+
+    .hint {
+      margin: 0;
+      color: #9ca4bd;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .back {
+      position: fixed;
+      top: 23px;
+      right: 24px;
+      color: #aeb8da;
+      font-size: 12px;
+      text-decoration: none;
+    }
+
+    .back:hover {
+      color: #e0e6ff;
+    }
+
+    @media (max-width: 520px) {
+      .panel {
+        top: 12px;
+        left: 12px;
+        padding: 12px 14px;
+      }
+
+      .actions {
+        bottom: 12px;
+        gap: 9px;
+        padding: 9px 10px;
+      }
+
+      .hint {
+        max-width: 190px;
+        font-size: 11px;
+      }
+
+      .back {
+        top: auto;
+        right: 14px;
+        bottom: 81px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="simulation" aria-label="可拖拽双摆混沌运动模拟"></canvas>
+  <section class="panel" aria-label="双摆状态">
+    <h1>双摆 · 混沌动力学</h1>
+    <p class="subtitle">等质量理想双摆 · Runge–Kutta 4</p>
+    <div class="readout">
+      <span>上摆角 θ₁</span><output id="angle-one">120.0°</output>
+      <span>下摆角 θ₂</span><output id="angle-two">−10.0°</output>
+      <span>数值状态</span><output id="status">运行中</output>
+    </div>
+  </section>
+  <a class="back" href="index.html">返回单摆模拟</a>
+  <section class="actions" aria-label="双摆控制">
+    <button id="reset" type="button">重置双摆</button>
+    <p class="hint">拖动任一摆球设置角度，松开后开始运动</p>
+  </section>
+
+  <script>
+    "use strict";
+
+    const canvas = document.querySelector("#simulation");
+    const context = canvas.getContext("2d");
+    const angleOneOutput = document.querySelector("#angle-one");
+    const angleTwoOutput = document.querySelector("#angle-two");
+    const statusOutput = document.querySelector("#status");
+    const resetButton = document.querySelector("#reset");
+    const gravity = 9.8;
+    const massOne = 1;
+    const massTwo = 1;
+    const lengthOne = 1.8;
+    const lengthTwo = 1.8;
+    const pixelsPerMeter = 100;
+    const lengthOnePixels = lengthOne * pixelsPerMeter;
+    const lengthTwoPixels = lengthTwo * pixelsPerMeter;
+    const initialAngleOne = 120 * Math.PI / 180;
+    const initialAngleTwo = -10 * Math.PI / 180;
+    const fixedStep = 1 / 240;
+    const trailDuration = 5;
+    const trail = [];
+    let state = [initialAngleOne, 0, initialAngleTwo, 0];
+    let accumulator = 0;
+    let previousTime = 0;
+    let trailElapsed = 0;
+    let dragTarget = -1;
+    let width = 0;
+    let height = 0;
+    let pixelRatio = 1;
+
+    function resize() {
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    }
+
+    function derivatives(values) {
+      const [thetaOne, omegaOne, thetaTwo, omegaTwo] = values;
+      const delta = thetaOne - thetaTwo;
+      const denominator = 2 * massOne + massTwo
+        - massTwo * Math.cos(2 * delta);
+      const alphaOne = (
+        -gravity * (2 * massOne + massTwo) * Math.sin(thetaOne)
+        - massTwo * gravity * Math.sin(thetaOne - 2 * thetaTwo)
+        - 2 * massTwo * Math.sin(delta) * (
+          omegaTwo ** 2 * lengthTwo
+          + omegaOne ** 2 * lengthOne * Math.cos(delta)
+        )
+      ) / (lengthOne * denominator);
+      const alphaTwo = (
+        2 * Math.sin(delta) * (
+          omegaOne ** 2 * lengthOne * (massOne + massTwo)
+          + gravity * (massOne + massTwo) * Math.cos(thetaOne)
+          + omegaTwo ** 2 * lengthTwo * massTwo * Math.cos(delta)
+        )
+      ) / (lengthTwo * denominator);
+
+      return [omegaOne, alphaOne, omegaTwo, alphaTwo];
+    }
+
+    function addScaled(values, derivative, scale) {
+      return values.map((value, index) => value + derivative[index] * scale);
+    }
+
+    function integrate(step) {
+      const k1 = derivatives(state);
+      const k2 = derivatives(addScaled(state, k1, step / 2));
+      const k3 = derivatives(addScaled(state, k2, step / 2));
+      const k4 = derivatives(addScaled(state, k3, step));
+
+      state = state.map((value, index) => value + step / 6 * (
+        k1[index] + 2 * k2[index] + 2 * k3[index] + k4[index]
+      ));
+
+      if (state.some(value => !Number.isFinite(value))) {
+        resetSimulation();
+        statusOutput.value = "数值已复位";
+        return false;
+      }
+
+      return true;
+    }
+
+    function positions() {
+      const pivotX = width / 2;
+      const pivotY = Math.max(150, height * 0.25);
+      const first = {
+        x: pivotX + lengthOnePixels * Math.sin(state[0]),
+        y: pivotY + lengthOnePixels * Math.cos(state[0])
+      };
+      const second = {
+        x: first.x + lengthTwoPixels * Math.sin(state[2]),
+        y: first.y + lengthTwoPixels * Math.cos(state[2])
+      };
+
+      return { pivot: { x: pivotX, y: pivotY }, first, second };
+    }
+
+    function drawTrail() {
+      for (let index = 1; index < trail.length; index += 1) {
+        const ageRatio = index / (trail.length - 1);
+        const alpha = 0.48 * ageRatio ** 1.7;
+        const hue = (205 + ageRatio * 310) % 360;
+        context.beginPath();
+        context.moveTo(trail[index - 1].x, trail[index - 1].y);
+        context.lineTo(trail[index].x, trail[index].y);
+        context.strokeStyle = `hsla(${hue}, 95%, 68%, ${alpha})`;
+        context.lineWidth = 1 + ageRatio * 2.4;
+        context.stroke();
+      }
+    }
+
+    function drawBall(point, radius, colors) {
+      const glow = context.createRadialGradient(
+        point.x, point.y, 2, point.x, point.y, radius * 3
+      );
+      glow.addColorStop(0, colors[0]);
+      glow.addColorStop(1, "rgba(115, 143, 255, 0)");
+      context.beginPath();
+      context.arc(point.x, point.y, radius * 3, 0, Math.PI * 2);
+      context.fillStyle = glow;
+      context.fill();
+
+      const ball = context.createRadialGradient(
+        point.x - radius * 0.35,
+        point.y - radius * 0.4,
+        1,
+        point.x,
+        point.y,
+        radius
+      );
+      ball.addColorStop(0, colors[1]);
+      ball.addColorStop(0.4, colors[2]);
+      ball.addColorStop(1, colors[3]);
+      context.beginPath();
+      context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      context.fillStyle = ball;
+      context.shadowColor = colors[0];
+      context.shadowBlur = 13;
+      context.fill();
+      context.shadowBlur = 0;
+    }
+
+    function draw() {
+      context.clearRect(0, 0, width, height);
+      const { pivot, first, second } = positions();
+
+      drawTrail();
+
+      context.beginPath();
+      context.moveTo(pivot.x, pivot.y);
+      context.lineTo(first.x, first.y);
+      context.lineTo(second.x, second.y);
+      context.strokeStyle = "rgba(196, 205, 235, 0.82)";
+      context.lineWidth = 2;
+      context.stroke();
+
+      context.beginPath();
+      context.arc(pivot.x, pivot.y, 5, 0, Math.PI * 2);
+      context.fillStyle = "#cbd4f5";
+      context.fill();
+      drawBall(first, 13, [
+        "rgba(126, 164, 255, 0.25)",
+        "#f0f4ff",
+        "#9eb5ff",
+        "#526bbd"
+      ]);
+      drawBall(second, 14, [
+        "rgba(255, 115, 218, 0.3)",
+        "#fff0fb",
+        "#ff91dc",
+        "#a53e9a"
+      ]);
+
+      angleOneOutput.value = `${(state[0] * 180 / Math.PI).toFixed(1)}°`;
+      angleTwoOutput.value = `${(state[2] * 180 / Math.PI).toFixed(1)}°`;
+    }
+
+    function canvasPoint(event) {
+      const bounds = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - bounds.left) * width / bounds.width,
+        y: (event.clientY - bounds.top) * height / bounds.height
+      };
+    }
+
+    function resetSimulation() {
+      state = [initialAngleOne, 0, initialAngleTwo, 0];
+      accumulator = 0;
+      trailElapsed = 0;
+      trail.length = 0;
+      statusOutput.value = "运行中";
+      draw();
+    }
+
+    function animate(timestamp) {
+      if (previousTime === 0) previousTime = timestamp;
+      const elapsed = Math.min((timestamp - previousTime) / 1000, 0.05);
+      previousTime = timestamp;
+
+      if (dragTarget === -1) {
+        accumulator += elapsed;
+        while (accumulator >= fixedStep) {
+          if (!integrate(fixedStep)) break;
+          accumulator -= fixedStep;
+        }
+
+        trailElapsed += elapsed;
+        if (trailElapsed >= 1 / 60) {
+          const { second } = positions();
+          trail.push({ x: second.x, y: second.y });
+          if (trail.length > trailDuration * 60) trail.shift();
+          trailElapsed %= 1 / 60;
+        }
+      }
+
+      draw();
+      requestAnimationFrame(animate);
+    }
+
+    canvas.addEventListener("pointerdown", event => {
+      const point = canvasPoint(event);
+      const { first, second } = positions();
+      const distance = target => Math.hypot(point.x - target.x, point.y - target.y);
+      const firstDistance = distance(first);
+      const secondDistance = distance(second);
+      const hitRadius = 30;
+
+      if (Math.min(firstDistance, secondDistance) > hitRadius) return;
+      dragTarget = firstDistance < secondDistance ? 0 : 1;
+      canvas.setPointerCapture(event.pointerId);
+      canvas.style.cursor = "grabbing";
+      trail.length = 0;
+      accumulator = 0;
+    });
+
+    canvas.addEventListener("pointermove", event => {
+      if (dragTarget === -1) return;
+      const point = canvasPoint(event);
+      const { pivot, first } = positions();
+
+      if (dragTarget === 0) {
+        state[0] = Math.atan2(point.x - pivot.x, point.y - pivot.y);
+        state[1] = 0;
+      } else {
+        state[2] = Math.atan2(point.x - first.x, point.y - first.y);
+        state[3] = 0;
+      }
+
+      trail.length = 0;
+      accumulator = 0;
+      draw();
+    });
+
+    function releasePointer() {
+      dragTarget = -1;
+      canvas.style.cursor = "";
+      accumulator = 0;
+      trail.length = 0;
+    }
+
+    canvas.addEventListener("pointerup", releasePointer);
+    canvas.addEventListener("pointercancel", releasePointer);
+    resetButton.addEventListener("click", resetSimulation);
+    window.addEventListener("resize", resize);
+
+    resize();
+    draw();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
