@@ -7,8 +7,8 @@
 
 ## 独立打开
 
-- 双击 [index.html](./index.html) 打开单摆模拟。
-- 双击 [double.html](./double.html) 打开双摆混沌模拟。
+- 访问 [index.html](./index.html) 查看单摆模拟页面。
+- 访问 [double.html](./double.html) 查看双摆混沌模拟页面。
 
 双摆使用四阶 Runge–Kutta 积分，支持拖拽摆球设置角度，并绘制衰减彩虹拖尾。
 
